@@ -1,0 +1,313 @@
+---
+title: "Final Project - DA2 & Coding 1"
+author: "Aftab"
+date: "12/17/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+# CLEAR MEMORY
+#rm(list=ls())
+
+# Importing libraries
+library(tidyverse)
+library(data.table)
+library(lspline)
+library(huxtable)
+library(modelsummary)
+library(lspline)
+library(fixest)
+library(ggthemes)
+library(kableExtra)
+library(esquisse)
+
+```
+
+```{r, echo=FALSE, message=FALSE,warning=FALSE, include=FALSE}
+
+# Loading the data from my Git repository
+wish_data_raw <- read_csv(url("https://raw.githubusercontent.com/Aftab1995/DA2-project/main/Final_Data.csv"))
+
+# Data taken from https://data.world/jfreex/summer-products-and-sales-performance-in-e-commerce-on-wish/workspace/file?filename=summer-products-with-rating-and-performance_2020-08.csv
+
+
+```
+
+```{r, echo=FALSE, message=FALSE,warning=FALSE, include=FALSE}
+##Data Munging
+
+# Looking at a quick summary of the data before starting munging
+
+datasummary_skim(wish_data_raw)
+
+# Checking the structure of the dataset
+glimpse(wish_data_raw)
+
+# The columns 'averagediscount' and 'meandiscount' same to have exactly the same values so I will drop the averagediscount column
+
+wish_data_raw$averagediscount <- NULL
+
+# Creating a nice summary of the important variables to see certain stats
+
+ds_raw <- datasummary((`No. of Products`= listedproducts) + (`Total Units Sold`= totalunitssold) + 
+                        (`Mean Units Sold`= meanunitssoldperproduct) + (`Rating` = rating) + 
+                        (`No. of Merchant Ratings` = merchantratingscount) +
+                        (`Mean Price` = meanproductprices) + (`Mean Retail Price` = meanretailprices) + 
+                        (`Mean Discount` = meandiscount) + (`Product Rating Count` = meanproductratingscount) + 
+                        (`Urgency Banner` = totalurgencycount) ~ 
+                        Mean + Median + SD + Min + Max + P25 + P75 + N, 
+                        data = wish_data_raw, fmt =1,
+                        title = "Descriptive statistics")
+
+# Dropping the columns 'urgencytextrate' as I won't be using this variable in my analysis
+
+wish_data_raw$urgencytextrate <- NULL
+
+# For the 'totalurgencycount' column, I will be replacing Null values with 0 as the Null values indicate no emergency banner, making this variable binary
+  
+wish_data_raw$totalurgencycount[is.na(wish_data_raw$totalurgencycount)]<-0
+
+# Checking the unique values in the listedproducts column along with their frequency
+
+wish_data_raw %>% group_by(listedproducts) %>% summarise(n = n())
+
+# I will be filtering the'wish_data_raw' dataset such that we are only left with the value of 'listedproducts' =1 for our analysis
+
+df <- wish_data_raw %>% filter(listedproducts==1)
+
+# Deleting the 'meanunitssoldperproduct' as it will now show the same results as 'totalunitssold'
+# as their is only 1 product
+
+df$meanunitssoldperproduct <- NULL
+
+```
+
+```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+
+# Creating a nice summary of the important variables to see certain stats
+
+ds_clean <- datasummary((`Total Units Sold`= totalunitssold) + 
+                        (`Rating` = rating) + 
+                        (`No. of Merchant Ratings` = merchantratingscount) +
+                        (`Mean Price` = meanproductprices) + (`Mean Retail Price` = meanretailprices) + 
+                        (`Mean Discount` = meandiscount) + (`Product Rating Count` = meanproductratingscount) + 
+                        (`Urgency Banner` = totalurgencycount) ~ 
+                        Mean + Median + SD + Min + Max + P25 + P75 + N, 
+                        data = df, fmt =1,
+                        title = "Descriptive statistics")
+
+```
+
+```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+# Looking at the distribution of the variables
+
+# Distribution of 'totalunitssold' 
+
+dist1 <- ggplot(data = df, aes(x = totalunitssold)) + 
+      geom_density()
+
+# Since the 'totalunitssold' variable is skewed with a long left tail, I am now looking at the distribution of 'totalunitssold'
+
+dist1_1 <- ggplot(data = df, aes(x = log(totalunitssold))) + 
+      geom_density()
+
+# Since taking the log of 'totalunitssold' brings its distribution near to normal distribution, I will be adding this as an additional variable in the dataset
+
+df$lnsales <- log(df$totalunitssold)
+
+# Distribution of 'meanproductprices'
+
+dist2 <- ggplot(data = df, aes(x = meanproductprices)) + 
+      geom_density()
+
+# Since the 'totalunitssold' variable is skewed with a long left tail, I am now looking at the distribution of 'totalunitssold'
+
+dist2_1 <- ggplot(data = df, aes(x = log(meanproductprices))) + 
+      geom_density()
+
+# Since taking the log of 'meanproductprices' brings its distribution near to normal distribution, I will be adding this as an additional variable in the dataset
+
+df$ln_online_price <- log(df$meanproductprices)
+
+# Distribution of 'rating'
+
+dist3 <- ggplot(data = df, aes(x = rating)) + 
+      geom_density()
+# the 'rating' variable is distributed normally so we will take it as is. 
+
+# Distribution of 'merchantratingscount'
+
+dist4 <- ggplot(data = df, aes(x = merchantratingscount)) + 
+      geom_density()
+
+# Distribution of 'merchantratingscount' is highly skewed with a long left tail so will take log of this and its distribution
+
+dist4_1 <- ggplot(data = df, aes(x = log(merchantratingscount))) + 
+      geom_density()
+
+# Since taking log of the variable brings its distribution to near normal, I will add the log of this as a new variable to the dataset
+
+df$ln_m_rating_count <- log(df$merchantratingscount)
+
+# There was a '0' in the column and it was dropped while creating the above variable as log of 0 is infinite.
+
+# Distribution of 'meanretailprices'
+
+dist5 <- ggplot(data = df, aes(x = meanretailprices)) + 
+      geom_density()
+
+# Distribution of 'meanretailprices' is highly skewed with a long left tail so will take log of this and its distribution
+
+dist5_1 <- ggplot(data = df, aes(x = log(meanretailprices))) + 
+      geom_density()
+
+# Since taking log of the variable brings its distribution to near normal, I will add the log of this as a new variable to the dataset
+
+df$ln_retail_price <- log(df$meanretailprices)
+
+# Distribution of 'meanproductratingscount'
+
+dist6 <- ggplot(data = df, aes(x = meanproductratingscount)) + 
+      geom_density()
+
+# Distribution of 'meanproductratingscount' is highly skewed with a long left tail so will take log of this and its distribution
+
+dist6_1 <- ggplot(data = df, aes(x = log(meanproductratingscount))) + 
+      geom_density()
+
+# Since taking log of the variable brings its distribution to near normal, I will add the log of this as a new variable to the dataset
+
+df$ln_p_rating_count <- log(df$meanproductratingscount)
+
+# I don't have to look at the distribution of 'totalurgencycoun' as it is a binary variable
+# I will not be looking at the distribution of 'meandiscount' as it contains -ve values as well so taking its log will not be possible
+
+```
+
+```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+
+# Creating a non-parametric regression of log of total sales with log of product online prices using a Lowess curve to see the association
+
+np_1 <- ggplot(df, aes(y=lnsales, x=ln_online_price))+
+  geom_smooth(formula = y~x, method = "loess")+ 
+  ggtitle("Lowess - Total Units Sold in Log Units vs. Log Online Price ")
+
+# Looking at the Lowess curve, it is clear that the association between these two variables is non-linear, hence I might use splines for 'ln_online_price' at ln_online_price = 2
+
+# Running a parametric simple linear regression between the above 2 variables 
+
+reg1 <- feols(lnsales ~ ln_online_price, data = df, vcov = "hetero")
+
+summary(reg1)
+
+# Running a parametric splined linear regression to see how the beta coefficient might be based on splines in comparison to the linear regression above
+
+reg1_1 <- feols(lnsales ~ lspline(ln_online_price,2), data = df, vcov = "hetero")
+
+# Looking at the confidence intervals at 95% of Beta coefficient in reg1 and Beta coefficients in reg1_1, taking splines is a better approach.
+# The confidence interval for reg1 Beta coefficient is [-0.40919,0.253422]
+# The confidence interval for reg1_1 Beta1 coefficient is [0.153934,1.196503] and for Beta2 is [-1.65708,-0.36948]
+# Although the confidence intervals for Beta from reg1 and Beta1 from reg1_1 do overlap a bit, when we compare the CI of Beta from reg1 to Beta2 from reg1_1, the CI do not overlap, which suggests that Beta from reg1 to Beta2 from reg1_1 are significantly different from each other
+
+```
+
+```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+# Creating a correlation  matrix to see the regression and interaction of the variables 
+
+# Checking correlations of variables with lnsales
+
+
+# Creating a temporary df that includes the transformed variables along with rating and meandiscount variables
+corr_df <- subset(df,select =c(lnsales,rating,totalurgencycount,ln_online_price,ln_m_rating_count,ln_retail_price,ln_p_rating_count, meandiscount))
+
+# making sure to have numeric columns only
+numeric_df <- keep( corr_df , is.numeric ) 
+
+
+cT <- round( cor( numeric_df , use = "complete.obs") , 2 )
+# create a lower triangular matrix
+cT[ upper.tri( cT ) ] <- NA 
+# Put it into a tibble format
+melted_cormat <- melt( cT , na.rm = TRUE)
+# Now we can create a heat-map
+ cor_matrix <- ggplot( data = melted_cormat, aes( Var2 , Var1 , fill = value ) )+
+  geom_tile( color = "white" ) +
+  scale_fill_gradient2(low = "red", high = "dark blue", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Correlation") +
+  theme_tufte()+ 
+  theme( axis.text.x = element_text(angle = 45, vjust = 1, 
+                                    size = 10, hjust = 1))+
+  labs(y="",x="")+
+  coord_fixed()+
+   ggtitle("Corelation Matrix")
+
+cor_matrix
+ 
+# Based on the correlation matrix lnsales has the weakest association with ln_p_rating_count and ln_m_rating_count. Else there is some association with the other variables vs lnsales.
+# The very weak relation of ln_p_rating_count and ln_m_rating_count could be explained based ont he reason that maybe customers don't usually look at total number of ratings and rather only focus on mean rating when purchasing a product.
+
+```
+
+```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+# Based on the correlation matrix, I will not be using ln_p_rating_count and ln_m_rating_count in my regression analysis.
+# I am now looking at association of lnsales with the rest of the variables using non-parametric Lowess regressions.
+
+# lnsales vs. rating
+np_2 <- ggplot(df, aes(y=lnsales, x=rating))+
+  geom_smooth(formula = y~x, method = "loess")+ 
+  ggtitle("Lowess - Total Units Sold in Log Units vs. Merchant Rating ")
+
+# Based on this,I will be using splines for the rating variable at 4.1
+
+# lnsales vs. ln_retail_price
+np_3 <- ggplot(df, aes(y=lnsales, x=ln_retail_price))+
+  geom_smooth(formula = y~x, method = "loess")+ 
+  ggtitle("Lowess - Total Units Sold in Log Units vs. Log Retail Price ")
+# Based on this I will be using splines at ln_retail_price = 1.5 and 3.5
+
+# lnsales vs. meandiscount
+np_4 <- ggplot(df, aes(y=lnsales, x=meandiscount))+
+  geom_smooth(formula = y~x, method = "loess")+ 
+  ggtitle("Lowess - Total Units Sold in Log Units vs. Mean Discount ")
+# Based on this I will be using splines at meandiscount = 15 and 69
+
+```
+
+```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+
+# Now that I have finalized the right hand side variables, I will be running regressions where I will add 1 variable each to see how the additional confounder may impact the lnprice beta coefficient and the R-squared values.
+
+# Adding rating
+reg2 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) , data = df, vcov = "hetero")
+summary(reg2)
+
+# Beta coefficients are significant, R-squared increased, beta coefficients of lnprice changed slightly
+
+# Adding meandiscount
+reg3 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) + lspline(meandiscount,c(15,69)) , data = df, vcov = "hetero")
+summary(reg3)
+
+# Beta coefficients are significant spline 1 and 3 of meandiscount, R-squared increased, beta coefficients of lnprice changed slightly
+
+# Adding totalurgencycount
+reg4 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) + lspline(meandiscount,c(15,69)) + totalurgencycount , data = df, vcov = "hetero")
+summary(reg4)
+
+# Beta coefficient for this variable is not significant and does not impact the rest of the Beta and R-quared values much. Will leave it in for now and will decide later on whether to keep it in the model or not
+
+# Adding ln_retail_price
+reg5 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) + lspline(meandiscount,c(15,69)) + totalurgencycount +       lspline(ln_retail_price, c(2,4)) , data = df, vcov = "hetero")
+summary(reg5)
+
+# adding ln_retail_price is making other coefficients less significant and is also decreasing the R-squared
+# Looking back at the data again and it's summary, it turns out that ln_retail_price, meandiscount, and ln_online_price are highly correlated due to the fact that online prices are discounted compared to the retail prices and hence there is no need for inclusion of both mean discount and retail prices. 
+# Also looking back at the correlation matrix, it shows that retail price and discount are highly correlated.
+# Hence I will go forward with just keeping the discount variable and not include the retail prices in the model.
+
+```
+

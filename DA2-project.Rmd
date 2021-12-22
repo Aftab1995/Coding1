@@ -1,17 +1,19 @@
 ---
-title: "Final Project - DA2 & Coding 1"
-author: "Aftab"
-date: "12/17/2021"
-output: pdf_document
+title: "Final Project - DA2 & Coding 1 - Aftab Alam"
+output: 
+  pdf_document:
+    extra_dependencies: ["float"]
+fontsize: 10pt
+geometry: margin=0.5cm
 ---
 
-```{r setup, include=FALSE}
+```{r, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r setup, include=FALSE, message=FALSE, warning=FALSE}
 # CLEAR MEMORY
-#rm(list=ls())
+rm(list=ls())
 
 # Importing libraries
 library(tidyverse)
@@ -23,11 +25,13 @@ library(lspline)
 library(fixest)
 library(ggthemes)
 library(kableExtra)
-library(esquisse)
+library(gridExtra)
+library(extrafont)
+
 
 ```
 
-```{r, echo=FALSE, message=FALSE,warning=FALSE, include=FALSE}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 
 # Loading the data from my Git repository
 wish_data_raw <- read_csv(url("https://raw.githubusercontent.com/Aftab1995/DA2-project/main/Final_Data.csv"))
@@ -37,12 +41,68 @@ wish_data_raw <- read_csv(url("https://raw.githubusercontent.com/Aftab1995/DA2-p
 
 ```
 
+### Introduction
+
+The objective of this paper is to explore the economic concept of price elasticity of demand (PED) for a few products listed on the eCommerce website [**Wish.com**](https://www.wish.com/). The intention is to see how, on average, customers responded to a change in price while controlling for a few factors, where that product is the only listed product by the merchant on their page.
+
+$$PED = \%\ Change\ in\ Quantity\ /\ \%\ Change\ in\ Price $$
+
+The paper will use the following regression formula to estimate the average PED for the products that is the only one listed by the merchant, where 'Z' refers to the confounding variables. 
+
+$$log(Quantity\ Sold)\ =\beta_0+\beta_1\ log(Online\ Prices)\ + Z $$
+
+It would be difficult to hypothesize before doing any analysis, whether the PED would be elastic or inelastic for the products used in this paper as the product specifications are not available and the only information available is whether a certain merchant lists only 1 product on their page or any other number of products. 
+
+The paper uses a number of techniques to analyze the above said concept that includes running simple linear regression, non-parametric LOWESS regressions, and parametric linear regressions.
+
+### Data
+The data itself has been taken from [**Data.World**](https://data.world/jfreex/summer-products-and-sales-performance-in-e-commerce-on-wish/workspace/file?filename=Computed+insight+-+Success+of+active+sellers.csv). It was posted by a user who was looking at the best product in terms of sale and had prepared a cleaned version, which has been utilized in the paper. However, contrary to the analysis conducted by that user, this paper is looking to see how elastic the demand is for those products for a percentage change in price. Here, for quantity demanded, products sold is taken as a proxy variable.
+
+The data set originally contained around 900 observations for unique merchants who had listed their products on the Wish.com and the data was obtained as of July, 2020. It contains variables related to the merchant, product prices, and ratings. The paper focuses on the prices and total sales for merchants that have only listed 1 product.
+
+#### Data Limitations
+
+
+The 'listedproducts' should not be confused with product code. It primarily gives the number of products listed
+by the seller on the website. For example, when the listed products is 1 for a few merchants, it does not necessarily
+mean they all list the same product, it just means they all list 1 product. Due to this, the paper is not looking for 
+the price elasticity of demand for 1 particular product but due to this limitation, the paper is looking at price elasticity
+of demand for a single product listed by the merchants on the website. 
+
+The implication of this limitation is that the calculated price elasticity of demanded cannot be compared as the products might
+not be similar across merchants. This also means that the paper cannot associate the PED to a certain product. It, however, will try
+to give an average PED for all the different products as an average.
+
+Nevertheless, the paper hypothesizes that the PED will be significantly less than 0 for a single product listed by the merchants on the website as per the law of demand, which states that quantity demanded decreases if the price of the product increases while keeping everything else constant. This is strictly about the sign of association on average and not the absolute magnitude.
+$$H_0\ :\ \beta\ >=\ 0\ , \  \ H_a\ :\ \beta_1\ <\ 0\ $$
+
+#### Important Variables
+
+  - 'listedproducts' is the number of products listed by the seller on the website. 
+  - 'totalunitssold' is the total number of units sold for the selected product.
+  - 'rating' is the mean rating for the seller on the website.
+  - 'meanproductprices' is the mean price of the product online.
+  - 'meanretailprices' is the mean retail price of the product in brick & morter stores.
+  - 'meandiscount' is the mean discount provided to the customers on this product. This discount 
+    is applied on the retail price, which then gives us the mean online price.
+  - 'totalurgencycount' is whether there was an urgency banner displayed on the product page 
+    or not.
+  
+
 ```{r, echo=FALSE, message=FALSE,warning=FALSE, include=FALSE}
 ##Data Munging
 
 # Looking at a quick summary of the data before starting munging
 
-datasummary_skim(wish_data_raw)
+ds_raw1 <- datasummary((`No. of Products`= listedproducts) + (`Total Units Sold`= totalunitssold) + 
+                        (`Mean Units Sold`= meanunitssoldperproduct) + (`Rating` = rating) + 
+                        (`No. of Merchant Ratings` = merchantratingscount) +
+                        (`Mean Price` = meanproductprices) + (`Mean Retail Price` = meanretailprices) + 
+                        (`Mean Discount` = meandiscount) + (`Average Discount` = averagediscount) + (`Product Rating Count` = meanproductratingscount) + 
+                        (`Urgency Banner` = totalurgencycount) + (`Urgency Banner Rate` = urgencytextrate ) ~ 
+                        Mean + Median + SD + Min + Max + N, 
+                        data = wish_data_raw, 
+                        title = "Descriptive Statistics of the Raw Data", fmt =0)
 
 # Checking the structure of the dataset
 glimpse(wish_data_raw)
@@ -59,9 +119,9 @@ ds_raw <- datasummary((`No. of Products`= listedproducts) + (`Total Units Sold`=
                         (`Mean Price` = meanproductprices) + (`Mean Retail Price` = meanretailprices) + 
                         (`Mean Discount` = meandiscount) + (`Product Rating Count` = meanproductratingscount) + 
                         (`Urgency Banner` = totalurgencycount) ~ 
-                        Mean + Median + SD + Min + Max + P25 + P75 + N, 
-                        data = wish_data_raw, fmt =1,
-                        title = "Descriptive statistics")
+                        Mean + Median + SD + Min + Max + N, 
+                        data = wish_data_raw, fmt =0,
+                        title = "Descriptive statistics", )
 
 # Dropping the columns 'urgencytextrate' as I won't be using this variable in my analysis
 
@@ -86,6 +146,30 @@ df$meanunitssoldperproduct <- NULL
 
 ```
 
+#### Data Cleaning & Munging
+
+
+The data taken from the Data.World was already clean and ready to use. However, I did make some changes to a few variables before using them in the regression analysis, based on a quick summary of the data set. Data summary of the base, unfiltered, data set is pasted in the appendix as 'Table 3'.  
+
+The original data set contained 13 variables in total, however, not all of these have been utilized.
+
+  - The variable 'averagediscount' was dropped from the dataset as it was duplicate of 'meandiscount' 
+    column
+  - The variable 'urgencytextrate' was dropped because it was a duplicate of 'totalurgencycount';
+    urgencytextrate = 100 * totalurgencycount
+  - Replaced the null values in the variable 'totalurgencycount' with 0 as null meant that there was 
+    no urgency banner associated to the product on the product page.
+  - The variable 'listedproducts' contained 11 unique values that referred to the number of products 
+    listed by each merchant on their online page. The variable contained the most observations 
+    (635 out of 958) for merchants who listed only 1 product on their page. So, 
+    for the purpose of this paper, I went ahead and selected the value of '1' for the number of products 
+    listed by merchants on their page.
+  - After making the above decision, the variable 'meanunitssoldperproduct' was then dropped because 
+    values of 'meanproductssold' and 'totalunitssold' were now identical, as the total units sold was 
+    divided by number of products to get the mean units sold of each list product, 1 in our case.
+
+After making above decisions regarding the variables, the following table gives us a quick summary for the important variables we went ahead with to use in our analysis.
+
 ```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
 
 # Creating a nice summary of the important variables to see certain stats
@@ -97,10 +181,17 @@ ds_clean <- datasummary((`Total Units Sold`= totalunitssold) +
                         (`Mean Discount` = meandiscount) + (`Product Rating Count` = meanproductratingscount) + 
                         (`Urgency Banner` = totalurgencycount) ~ 
                         Mean + Median + SD + Min + Max + P25 + P75 + N, 
-                        data = df, fmt =1,
+                        data = df, fmt =0,
                         title = "Descriptive statistics")
 
 ```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.align='center', fig.height=2 }
+# Placing the clean table here for the markdown file.
+ds_clean %>% kableExtra::kable_styling(latex_options = "HOLD_position", position = "center")
+
+```
+
 
 ```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
 # Looking at the distribution of the variables
@@ -108,26 +199,37 @@ ds_clean <- datasummary((`Total Units Sold`= totalunitssold) +
 # Distribution of 'totalunitssold' 
 
 dist1 <- ggplot(data = df, aes(x = totalunitssold)) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = "Tota Units Sold") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 
-# Since the 'totalunitssold' variable is skewed with a long left tail, I am now looking at the distribution of 'totalunitssold'
+
+# Since the 'totalunitssold' variable is skewed with a long right tail, I am now looking at the distribution of 'totalunitssold'
 
 dist1_1 <- ggplot(data = df, aes(x = log(totalunitssold))) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = "Tota Units Sold (log units)") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
+
 
 # Since taking the log of 'totalunitssold' brings its distribution near to normal distribution, I will be adding this as an additional variable in the dataset
 
-df$lnsales <- log(df$totalunitssold)
+df$lnsales <- log(df$totalunitssold) 
 
 # Distribution of 'meanproductprices'
 
 dist2 <- ggplot(data = df, aes(x = meanproductprices)) + 
-      geom_density()
+      geom_histogram() + 
+      labs(y = "Frequency", x = "Mean Product Prices") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 
-# Since the 'totalunitssold' variable is skewed with a long left tail, I am now looking at the distribution of 'totalunitssold'
+# Since the 'totalunitssold' variable is skewed with a long right tail, I am now looking at the distribution of 'totalunitssold'
 
 dist2_1 <- ggplot(data = df, aes(x = log(meanproductprices))) + 
-      geom_density()
+      geom_histogram() + 
+      labs(y = "Frequency", x = "Mean Product Prices (log units)") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
+
 
 # Since taking the log of 'meanproductprices' brings its distribution near to normal distribution, I will be adding this as an additional variable in the dataset
 
@@ -136,18 +238,24 @@ df$ln_online_price <- log(df$meanproductprices)
 # Distribution of 'rating'
 
 dist3 <- ggplot(data = df, aes(x = rating)) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = " Mean Merchant Rating") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 # the 'rating' variable is distributed normally so we will take it as is. 
 
 # Distribution of 'merchantratingscount'
 
 dist4 <- ggplot(data = df, aes(x = merchantratingscount)) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = " Mean Merchant Rating Count") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 
-# Distribution of 'merchantratingscount' is highly skewed with a long left tail so will take log of this and its distribution
+# Distribution of 'merchantratingscount' is highly skewed with a long right tail so will take log of this and its distribution
 
 dist4_1 <- ggplot(data = df, aes(x = log(merchantratingscount))) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = " Mean Merchant Rating Count (log units)") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 
 # Since taking log of the variable brings its distribution to near normal, I will add the log of this as a new variable to the dataset
 
@@ -158,12 +266,16 @@ df$ln_m_rating_count <- log(df$merchantratingscount)
 # Distribution of 'meanretailprices'
 
 dist5 <- ggplot(data = df, aes(x = meanretailprices)) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = " Mean Retail Prices") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 
-# Distribution of 'meanretailprices' is highly skewed with a long left tail so will take log of this and its distribution
+# Distribution of 'meanretailprices' is highly skewed with a long right tail so will take log of this and its distribution
 
 dist5_1 <- ggplot(data = df, aes(x = log(meanretailprices))) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = " Mean Retail Prices (log units)") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 
 # Since taking log of the variable brings its distribution to near normal, I will add the log of this as a new variable to the dataset
 
@@ -172,12 +284,18 @@ df$ln_retail_price <- log(df$meanretailprices)
 # Distribution of 'meanproductratingscount'
 
 dist6 <- ggplot(data = df, aes(x = meanproductratingscount)) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = " Mean Product Ratings Count") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
 
-# Distribution of 'meanproductratingscount' is highly skewed with a long left tail so will take log of this and its distribution
+
+# Distribution of 'meanproductratingscount' is highly skewed with a long right tail so will take log of this and its distribution
 
 dist6_1 <- ggplot(data = df, aes(x = log(meanproductratingscount))) + 
-      geom_density()
+      geom_histogram() +
+      labs(y = "Frequency", x = " Mean Product Ratings Count (log units)") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"))
+
 
 # Since taking log of the variable brings its distribution to near normal, I will add the log of this as a new variable to the dataset
 
@@ -188,32 +306,47 @@ df$ln_p_rating_count <- log(df$meanproductratingscount)
 
 ```
 
-```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
 
-# Creating a non-parametric regression of log of total sales with log of product online prices using a Lowess curve to see the association
+The next step after identifying the important variables for our analysis was to look at how the individual variables are distributed and whether these need any transformations.  
 
-np_1 <- ggplot(df, aes(y=lnsales, x=ln_online_price))+
-  geom_smooth(formula = y~x, method = "loess")+ 
-  ggtitle("Lowess - Total Units Sold in Log Units vs. Log Online Price ")
+  - The variable 'totalunitssold' had a skewed distribution with a long right tail. Hence, I created 
+    a new variable 'lnsales' that took the log of 'totalunitssold'. Although, the new distribution is not normal,
+    I went ahead with it as it is not skewed.
+    
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.align='center', fig.width=6, fig.height=1.5, fig.show="hold"}
+#Putting graphs side by side for the markdown file
 
-# Looking at the Lowess curve, it is clear that the association between these two variables is non-linear, hence I might use splines for 'ln_online_price' at ln_online_price = 2
-
-# Running a parametric simple linear regression between the above 2 variables 
-
-reg1 <- feols(lnsales ~ ln_online_price, data = df, vcov = "hetero")
-
-summary(reg1)
-
-# Running a parametric splined linear regression to see how the beta coefficient might be based on splines in comparison to the linear regression above
-
-reg1_1 <- feols(lnsales ~ lspline(ln_online_price,2), data = df, vcov = "hetero")
-
-# Looking at the confidence intervals at 95% of Beta coefficient in reg1 and Beta coefficients in reg1_1, taking splines is a better approach.
-# The confidence interval for reg1 Beta coefficient is [-0.40919,0.253422]
-# The confidence interval for reg1_1 Beta1 coefficient is [0.153934,1.196503] and for Beta2 is [-1.65708,-0.36948]
-# Although the confidence intervals for Beta from reg1 and Beta1 from reg1_1 do overlap a bit, when we compare the CI of Beta from reg1 to Beta2 from reg1_1, the CI do not overlap, which suggests that Beta from reg1 to Beta2 from reg1_1 are significantly different from each other
+grid.arrange(dist1, dist1_1, ncol=2)
 
 ```
+
+  - The variable 'meanproductprices' had a skewed distribution with a long right tail. Hence, I created 
+    a new variable 'ln_online_price' that took the log of 'meanproductprices' resulting in a near 
+    normal distribution curve. 
+    
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.align='center', fig.width=6, fig.height=1.5, fig.show="hold"}
+#Putting graphs side by side for the markdown file
+
+grid.arrange(dist2, dist2_1, ncol=2)
+
+```    
+
+  - The variable 'rating' was distributed normally so it was taken as is. Graphs for the rest of 
+    these variables are placed in the appendix.
+  - The variable 'merchantratingscount' had a skewed distribution with a long right tail. Hence, 
+    I created a new variable 'ln_m_rating_count' that took the log of 'merchantratingscount' resulting 
+    in a near normal distribution curve. 
+  - The variable 'meanretailprices' had a skewed distribution with a long right tail. Hence, I created 
+    a new variable 'ln_retail_price' that took the log of 'meanretailprices' resulting in a near 
+    normal distribution curve.
+  - The variable 'meanproductratingscount' had a skewed distribution with a long right tail. Hence, 
+    I created a new variable 'ln_p_rating_count' that took the log of 'meanproductratingscount' 
+    resulting in a near normal distribution curve.
+  - I don't have to look at the distribution of 'totalurgencycoun' as it is a binary variable.
+  - I did not look at the distribution of 'meandiscount' as it contains -ve values as well so taking 
+    its log will not be possible. Negative values suggest that the mean online price is higher than 
+    the mean retail price in the brick & morter shops, whereas a positive value suggests that the mean 
+    online price is lower than the mean retail price in the brick & morter shops.
 
 ```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
 # Creating a correlation  matrix to see the regression and interaction of the variables 
@@ -222,7 +355,7 @@ reg1_1 <- feols(lnsales ~ lspline(ln_online_price,2), data = df, vcov = "hetero"
 
 
 # Creating a temporary df that includes the transformed variables along with rating and meandiscount variables
-corr_df <- subset(df,select =c(lnsales,rating,totalurgencycount,ln_online_price,ln_m_rating_count,ln_retail_price,ln_p_rating_count, meandiscount))
+corr_df <- subset(df,select =c(lnsales ,rating,totalurgencycount,ln_online_price,ln_m_rating_count,ln_retail_price,ln_p_rating_count, meandiscount))
 
 # making sure to have numeric columns only
 numeric_df <- keep( corr_df , is.numeric ) 
@@ -239,30 +372,87 @@ melted_cormat <- melt( cT , na.rm = TRUE)
   scale_fill_gradient2(low = "red", high = "dark blue", mid = "white", 
                        midpoint = 0, limit = c(-1,1), space = "Lab", 
                        name="Correlation") +
-  theme_tufte()+ 
-  theme( axis.text.x = element_text(angle = 45, vjust = 1, 
-                                    size = 10, hjust = 1))+
+  theme( axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1))+
   labs(y="",x="")+
   coord_fixed()+
-   ggtitle("Corelation Matrix")
+   ggtitle("Correlation Matrix") + 
+   labs(caption = "Original variable names have been used in this chart for accuracy purposes")
 
 cor_matrix
  
+
+
 # Based on the correlation matrix lnsales has the weakest association with ln_p_rating_count and ln_m_rating_count. Else there is some association with the other variables vs lnsales.
 # The very weak relation of ln_p_rating_count and ln_m_rating_count could be explained based ont he reason that maybe customers don't usually look at total number of ratings and rather only focus on mean rating when purchasing a product.
 
 ```
+
+### Analysis
+
+#### Choosing Confounding Variables
+
+After all the data transformation and cleaning, I then looked at the possible correlations between the important variables discussed above. For this, I created a correlation matrix, shown in the appendix.
+
+The dependent variable 'lnsales' has the weakest, near zero, correlation with 'ln_p_rating_count' and 'ln_m_rating_count' due to which these will not be used in the regression analysis ahead. Apart from these two variables, the rest have some kind of correlation that will be explored in the analysis ahead.
+
+The near zero correlation of 'lnsales' with 'ln_p_rating_count' and 'ln_m_rating_count' could be explained based on the reason that maybe customers don't usually look at the total number of ratings provided for the product and/or the merchant and rather only focus on the mean rating when purchasing a product.
+
+```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+
+# Creating a non-parametric regression of log of total sales with log of product online prices using a Lowess curve to see the association
+
+np_1 <- ggplot(df, aes(y=lnsales, x=ln_online_price)) +
+  geom_smooth(formula = y~x, method = "loess") + 
+  geom_point() +
+  ggtitle("Lowess - Total Units Sold in Log Units vs. Log Online Price ") + 
+  labs(y = "Total Sales (log units)", x = " Mean Online Prices (log units)") +
+      theme(axis.title.y = element_text(size = 10L, face = "bold"), axis.title.x = element_text(size = 10L, face = "bold"), 
+            plot.title = element_text(size = 10L, face = "bold", hjust = 0.5))
+
+# Looking at the Lowess curve, it is clear that the association between these two variables is non-linear, hence I might use splines for 'ln_online_price' at ln_online_price = 2
+
+# Running a parametric simple linear regression between the above 2 variables 
+
+reg1 <- feols(lnsales ~ ln_online_price, data = df, vcov = "hetero")
+
+summary(reg1)
+
+# Running a parametric splined linear regression to see how the beta coefficient might be based on splines in comparison to the linear regression above
+
+reg1_1 <- feols(lnsales ~ lspline(ln_online_price,2), data = df, vcov = "hetero")
+
+# Looking at the confidence intervals at 95% of Beta coefficient in reg1 and Beta coefficients in reg1_1, taking splines is a better approach.
+# The confidence interval for reg1 Beta coefficient is [-0.40919,0.253422]
+# The confidence interval for reg1_1 Beta1 coefficient is [0.153934,1.196503] and for Beta2 is [-1.65708,-0.36948]
+# Although the confidence intervals for Beta from reg1 and Beta1 from reg1_1 do overlap a bit, it is difficult to say whether they are significantly different or not as the beta values lie outside of each others CI, hence will have to conduct a formal hypothesis test.
+```
+
+
+#### Regression Analysis
+
+Before moving on to estimate a regression model with confounding variables, the paper first looks at how the main y 'lnsales' and x 'ln_online_prices' are associated; whether this relationship is linear or not. To do this, I have first run a non-parametric LOWESS regression that results in the following graph.
+
+```{r,warning=FALSE, message=FALSE, fig.align='center', echo=FALSE, fig.height=2.5,fig.width=5}
+
+np_1
+
+```
+
+Based on this LOWESS, it is visible that the association between these two variables might not be linear, hence, I might use splines in the parametric regression ahead. However, before directly jumping into using splines for the variable 'ln_online_prices', I ran a simple linear regression and a parametric splined regression to compare the beta coefficients and answer the question; are the beta coefficients in the splined linear regression significantly equal to the beta coefficient in the simple linear regression?
+
+Upon running the regressions (Model 1: Simple Linear Regression vs Model 2: Linear Regression in the *Regression Models* table below) and comparing the confidence intervals (CI), it was difficult to conclude whether the beta coefficients from two regression models were significantly same or not as their CI overlapped but the model 1 beta values was outside of model 2 beta CI. A better way forward would be to formally test whether the betas are different or not, however, since the overlap of CIs is very small, for the purpose of this paper, I would assume the the Beta coefficients in two models are significantly different. More details on these CI for each of these beta coefficient are in the appendix.
+
 
 ```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
 # Based on the correlation matrix, I will not be using ln_p_rating_count and ln_m_rating_count in my regression analysis.
 # I am now looking at association of lnsales with the rest of the variables using non-parametric Lowess regressions.
 
 # lnsales vs. rating
-np_2 <- ggplot(df, aes(y=lnsales, x=rating))+
+np_2 <- ggplot(df, aes(y=lnsales, x=log(rating)))+
   geom_smooth(formula = y~x, method = "loess")+ 
   ggtitle("Lowess - Total Units Sold in Log Units vs. Merchant Rating ")
 
-# Based on this,I will be using splines for the rating variable at 4.1
+# Based on this,I will be using splines for the rating variable at 1.4
 
 # lnsales vs. ln_retail_price
 np_3 <- ggplot(df, aes(y=lnsales, x=ln_retail_price))+
@@ -278,36 +468,187 @@ np_4 <- ggplot(df, aes(y=lnsales, x=meandiscount))+
 
 ```
 
+After deciding on how to go about using the x variable 'ln_online_price', I looked at the association between 'lnsales' vs. 'rating', 'lnsales' vs. 'ln_retail_price', and 'ln_sales' vs. 'meandiscount' using non-paramteric LOWESS regressions. The graphs for these regressions are placed in the appendix.
+
+  - The association between 'lnsales' and 'rating' is non-linear hence I will be using splines for 
+    rating with a knot at 'rating' = 4.1
+  - The association between 'lnsales' and 'ln_retail_price' is non-linear hence I will be using 
+    splines for 'ln_retail_price' with knots at 'ln_retail_price' = 1.5 and 'ln_retail_price' = 3.5
+  - The association between 'lnsales' and 'meandiscount' is non-linear hence I will be using splines 
+    for 'meandiscount' with knots at 'meandiscount' = 15 and 'meandiscount' = 69
+  - I will be using the variable 'totalurgencycount' without any splines as this a binary variable
+
 ```{r, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
 
 # Now that I have finalized the right hand side variables, I will be running regressions where I will add 1 variable each to see how the additional confounder may impact the lnprice beta coefficient and the R-squared values.
 
 # Adding rating
-reg2 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) , data = df, vcov = "hetero")
+reg2 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(log(rating),1.4) , data = df, vcov = "hetero")
 summary(reg2)
 
 # Beta coefficients are significant, R-squared increased, beta coefficients of lnprice changed slightly
 
 # Adding meandiscount
-reg3 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) + lspline(meandiscount,c(15,69)) , data = df, vcov = "hetero")
+reg3 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(log(rating),1.4) + lspline(meandiscount,c(15,69)) , data = df, vcov = "hetero")
 summary(reg3)
 
 # Beta coefficients are significant spline 1 and 3 of meandiscount, R-squared increased, beta coefficients of lnprice changed slightly
 
 # Adding totalurgencycount
-reg4 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) + lspline(meandiscount,c(15,69)) + totalurgencycount , data = df, vcov = "hetero")
+reg4 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(log(rating),1.4) + lspline(meandiscount,c(15,69)) + totalurgencycount , data = df, vcov = "hetero")
 summary(reg4)
 
 # Beta coefficient for this variable is not significant and does not impact the rest of the Beta and R-quared values much. Will leave it in for now and will decide later on whether to keep it in the model or not
 
 # Adding ln_retail_price
-reg5 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(rating,4.1) + lspline(meandiscount,c(15,69)) + totalurgencycount +       lspline(ln_retail_price, c(2,4)) , data = df, vcov = "hetero")
+reg5 <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(log(rating),1.4) + lspline(meandiscount,c(15,69)) + totalurgencycount + lspline(ln_retail_price, c(2,4)) , data = df, vcov = "hetero")
 summary(reg5)
 
 # adding ln_retail_price is making other coefficients less significant and is also decreasing the R-squared
-# Looking back at the data again and it's summary, it turns out that ln_retail_price, meandiscount, and ln_online_price are highly correlated due to the fact that online prices are discounted compared to the retail prices and hence there is no need for inclusion of both mean discount and retail prices. 
+# Looking back at the data again and it's data summary, it turns out that ln_retail_price, meandiscount, and ln_online_price are highly correlated due to the fact that online prices are discounted compared to the retail prices and hence there is no need for inclusion of both mean discount and retail prices. 
 # Also looking back at the correlation matrix, it shows that retail price and discount are highly correlated.
 # Hence I will go forward with just keeping the discount variable and not include the retail prices in the model.
+# Additionally, I will also not include the 'totalurgencycount' variable as it doesn't seem to impact the beta of "ln_online_prices".
+
+reg_final <- feols(lnsales ~ lspline(ln_online_price,2) + lspline(log(rating),1.4) + lspline(meandiscount,c(15,69)), data = df, vcov = "hetero")
+summary(reg_final)
+
+# This model is same as the one I ran earlier, the reg3 model above
+
+# When I compare the BIC (Bayesian Information Criteria), it is lower for the model 4, without the 'totalurgency' and 'ln_retail_price' variables.
+
+```
+
+
+After identifying the association of above mentioned variables using the LOWESS curves, I have then added each variable incrementally one by one into linear regression models to see how each additional confounding variable impacts the beta coefficients of our main x variable 'ln_online_price'.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# Summarize our findings:
+
+# Renaming coefficients for the regression table
+varname_report <- c("(Intercept)" = "Intercept",
+                   "lspline(ln_online_price, 2)1" = "Log of Online Prices (<2)",
+                   "lspline(ln_online_price, 2)2" = "Log of Online Prices (>=2)",
+                   "lspline(rating, 4.1)1" = "Merchant Mean Rating (<4.1)",
+                   "lspline(rating, 4.1)2" = "Merchant Mean Rating (>=4.1)",
+                   "lspline(meandiscount, c(15, 69))1" = "Mean Discount (<15)",
+                   "lspline(meandiscount, c(15, 69))2" = "Mean Discount (>=15 & <69)",
+                   "lspline(meandiscount, c(15, 69))3" = "Mean Discount (>=69)",
+                   "totalurgencycount" = "Urgency Banner?",
+                   "lspline(ln_retail_price, c(2, 4))1" = "Log of Retail Prices (<2)",
+                   "lspline(ln_retail_price, c(2, 4))2" = "Log of Retail Prices (>=2 & <4)",
+                   "lspline(ln_retail_price, c(2, 4))3" = "Log of Retail Prices (>=4)")
+
+
+# Creating a nice table to summarize all the regression models with BIC and Adjusted R-squared stats
+
+summary_reg <- msummary(list(reg1 , reg1_1, reg2, reg3, reg4, reg5),
+         fmt="%.2f",
+         gof_omit = 'DF|Deviance|Log.Lik.|F|AIC|PseudoR2|WithinR2|R2|Std.Errors',
+         stars=c('*' = 0.1,'**' = .05, '***' = .01),
+         coef_rename = c("(Intercept)" = "Intercept",
+                   "lspline(ln_online_price, 2)1" = "Log of Online Prices (<2)",
+                   "lspline(ln_online_price, 2)2" = "Log of Online Prices (>=2)",
+                   "lspline(rating, 4.1)1" = "Merchant Mean Rating (<4.1)",
+                   "lspline(rating, 4.1)2" = "Merchant Mean Rating (>=4.1)",
+                   "lspline(meandiscount, c(15, 69))1" = "Mean Discount (<15)",
+                   "lspline(meandiscount, c(15, 69))2" = "Mean Discount (>=15 & <69)",
+                   "lspline(meandiscount, c(15, 69))3" = "Mean Discount (>=69)",
+                   "totalurgencycount" = "Urgency Banner?",
+                   "lspline(ln_retail_price, c(2, 4))1" = "Log of Retail Prices (<2)",
+                   "lspline(ln_retail_price, c(2, 4))2" = "Log of Retail Prices (>=2 & <4)",
+                   "lspline(ln_retail_price, c(2, 4))3" = "Log of Retail Prices (>=4)"),
+          title = "Regression Models to Explore Price Elasticity of Demand for Single Listed Product by a Merchant",
+         notes = "Regression results are calculated based on heteroskedastic robust standard errors") %>% 
+  kableExtra::kable_styling(latex_options = "HOLD_position", position = "center",)
+
+
+```
+
+As summarized in the table 2 in the appendix below, when the confounding variable 'log(rating)' is added in model 3, it decreased the beta coefficients for both splines of the 'ln_online_price', estimating, in absolute terms, that on average the PED could be lower in the population, i.e. it could be inelastic.
+
+Adding the next confounding variable 'meandiscount' into model 4 impacts the the beta coefficients of 'ln_online_prices' differently. In absolute terms, when the online price is lower than 2 log units, the PED is now higher compared to the previous model, makig it less inelastic. Whereas, in absolute terms, when the online price is greater than or equal to 2 log units, the PED is now lower compared to the previous model, making PED more inelastic. 
+
+Further, adding the 'totalurgencycount' confounding variable does not impact the coefficients of our main x variable 'ln_online_price' much and its own coefficient is not significant.
+
+For model 6, adding the 'ln_retail_price' changes a lot of things in the regression model. In absolute terms, the coefficient for online price with the value of less than log unit 2, PED became more elastic compared to the previous model. Whereas, for online prices greater than or equal to 2 log units, in absolute terms, PED became more inelastic, moving nearer towards 0. Additionally, these coefficients are not significant at 95% confidence level. Some other coefficients that were previously significant also became non-significant.  
+
+Moreover, looking back at the data again and it's data summary, it turns out that ln_retail_price, meandiscount, and ln_online_price are highly correlated due to the fact that online prices are discounted compared to the retail prices and hence there is no need for inclusion of both mean discount and mean retail prices. Also looking back at the correlation matrix, it shows that retail price and discount are highly correlated.
+
+Hence I will go forward with just keeping the discount variable and not include the retail prices in the model. I will also not include the 'totalurgencycount' variable as it does not seem to impact the beta of "ln_online_prices".
+
+Lastly, comparing the BIC (Bayesian Information Criteria), it is higher for model 6, however, without the 'totalurgency' and 'ln_retail_price' variables in model 4, the BIC there is a lot lower even with confounding variables. 
+
+
+### Conclusion
+
+The preferred model for this paper is shown below using the parametric equation with the final beta coefficient values. The counfounding variables have been clubbed into the 'Z' variable.
+$$log(Quantity\ Sold)\ =\ -12.28+ 0.81\ log(Online\ Prices) (<2)\ - 0.85\ log(Online\ Prices) (>=2)\ + Z $$
+The model suggests that for online prices less than log 2 units (exp^2 = Euros 7.4), the PED is positive on average, suggesting that these products maybe be considered [**Giffen**](https://en.wikipedia.org/wiki/Giffen_good) goods that violate the law of demand. Meaning a percentage higher price results on average in a percentage higher demand for the product on average. On the other hand, online prices greater than log 2 units (exp^2 = Euros 7.4), the PED is negative, as expected, hence, holding the law of demand true for this data set on average. Estimating a percentage higher price results on a average in a percentage lower demand for the product. 
+
+However, can we generalize these results to all the products available on the Wish.com? Possibly not. Because our data set has numerous limitations, including the fact that we do not have the details of each product. A better way forward would be to get prices of chosen products from Wish.com, collect their retail prices, and avail as many confounding variables as possible, such as country, size, color etc, so that based on the needs, those can be included in the regression model. 
+
+Why go this extra mile? This could possibly help merchants price their products better after learning how consumers react to price changes for specific products, hence managing their overall sales.
+
+### Appendix
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.height=5}
+# Putting the summary table of the regressions for the markdown file, making sure it holds teh position and is centered using Kable styling.
+summary_reg %>% 
+  kableExtra::kable_styling(latex_options = "HOLD_position", position = "center",)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+# Putting the summary table along with Kable Styling options
+ds_raw1 %>% 
+  kableExtra::kable_styling(latex_options = "HOLD_position", position = "center",)
+
+```
+
+
+\newpage
+### Details on beta coefficients of model 1 and model 2
+
+
+CI of beta coefficient from model 1 for 'ln_online_price'
+
+$$CI\ :\ [\ -0.41\ ,\ 0.25\ ]\ where\ \beta\ =\ -0.08  $$
+The beta coefficient here estimates that if the online price is higher for the product by 1%, the average number of units sold will be lower by 0.08%, where it is not significant even at a 90% confidence interval. The CI suggests that the true beta on average in the population will be between -0.45 & 0.25, implying that we fail to reject our original null hypothesis that the PED in the population will be greater than or equal to zero for a single product listed by the merchants on the website.
+
+
+CI of beta coefficient from model 2 for the first spline of 'ln_online_price'
+
+$$CI\ :\ [\ 0.15\ ,\ 1.20\ ]\ where\ \beta_1\ =\ 0.68 $$
+Here the beta coefficient is significant for the first spline of 'ln_online_price' estimating that on average the PED is between 0.15 and 1.2 when the price of the product on the website is less than 2 log units, i.e around 7.4 Euros and we can reject the original null hypothesis with 99% confidence, i.e. on average PED is less than 0 in the population, holding law of demand true keeping everything else constant.
+
+CI of beta coefficient from model 2
+
+$$CI\ :\ [\ -1.66\ ,\ -0.37\ ]\ where\ \beta_2\ =\ -1.01 $$
+*Figures mentioned in the above CIs are rounded to two decimal places and are based on heteroskedastic robust standard errors.*
+
+Here the beta coefficient is significant for the second spline of 'ln_online_price' estimating that on average the PED is between -1.66 and -0.37 when the price of the product on the website is greater than or equal to 2 log units, i.e around 7.4 Euros and we can reject the original null hypothesis with 99% confidence, i.e. on average PED is less than 0 in the population, holding law of demand true, keeping everything else constant.
+
+#### Distributions of important variables
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.height=2,fig.width=5}
+# Putting in the distribution graphs for counfounding variables
+dist3
+dist4 
+dist4_1
+dist5
+dist5_1
+dist6
+dist6_1
+```
+
+
+#### Correlation Matrix
+
+```{r,warning=FALSE, message=FALSE, fig.align='center', echo=FALSE}
+# Putting in the correlation matrix
+cor_matrix
 
 ```
 
